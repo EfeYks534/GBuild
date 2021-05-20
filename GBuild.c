@@ -400,8 +400,6 @@ void ExecuteForEach(char *target_ext, char *cur_dir, LexState *state)
 
 			char *dir_name = StringBuild(builder);
 
-			printf("Iterating %s\n", dir_name);
-
 			StringBuilderDelete(builder);
 			ExecuteForEach(target_ext, dir_name, state);
 		}
