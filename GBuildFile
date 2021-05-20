@@ -1,0 +1,33 @@
+let cc     = "clang";
+let cflags = "-Wall -Wextra -pedantic -g";
+let libs   = "-lG64 -lm";
+
+let status = 0;
+
+$"mkdir -p ./bin";
+
+#foreach("c") {
+	status = status + ($cc + " -c " + file + " " + cflags +
+						" -o ./bin/" + (file - 1) + "o");
+}
+
+if(status) {
+	$"rm ./bin/*";
+	$"rmdir ./bin";
+	#exit;
+}
+
+status = status + ($cc + " ./bin/*.o " + cflags + " -o gbuild " + libs);
+
+$"rm ./bin/*";
+$"rmdir ./bin";
+
+if(!status) {
+	if(!(argc - 2)) {
+		if(arg1 / "install") {
+			$"sudo cp ./gbuild /usr/bin/gbuild";
+		}
+	}
+}
+
+#exit;
