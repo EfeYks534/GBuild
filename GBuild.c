@@ -367,14 +367,46 @@ void ExecuteForEach(char *target_ext, char *cur_dir, LexState *state)
 					var->value.str_len = len;
 				}
 
+				var = VariableGet("dir");
+
+				if(var == NULL) {
+					var = calloc(1, sizeof(Variable));
+					var->name          = "dir";
+					var->value.type    = VT_STRING;
+					var->value.cur_str = cur_dir;
+					var->value.str_len = strlen(cur_dir);
+
+					VariableNew(var);
+				} else {
+					var->value.type    = VT_STRING;
+					var->value.cur_str = cur_dir;
+					var->value.str_len = strlen(cur_dir);
+				}
+
+
 				lex = LexStateNew();
 				memcpy(lex, state, sizeof(LexState));
 				PrsBody();
 			}
 		}
-		if(ent->d_type == DT_DIR)
-			ExecuteForEach(target_ext, ent->d_name, state);
 
+		if(ent->d_type == DT_DIR) {
+			if(ent->d_name[0] == '.')
+				goto next;
+
+			StringBuilder *builder = StringBuilderNew();
+
+			StringBuilderAppend(builder, "%s/%s", cur_dir, ent->d_name);
+
+			char *dir_name = StringBuild(builder);
+
+			printf("Iterating %s\n", dir_name);
+
+			StringBuilderDelete(builder);
+			ExecuteForEach(target_ext, dir_name, state);
+		}
+
+next:;
 		ent = readdir(dir);
 	}
 }
@@ -393,6 +425,8 @@ void PrsBuiltin()
 	else if(AcceptIdentB("foreach")) {
 		if(VariableGet("file") != NULL)
 			ErrorHandle(lex, "The variable 'file' is used by #foreach");
+		if(VariableGet("dir") != NULL)
+			ErrorHandle(lex, "The variable 'dir' is used by #foreach");
 
 		Expect(TK_LEFT_PHAR);
 		Expect(TK_STRING);
