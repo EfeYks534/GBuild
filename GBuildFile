@@ -14,7 +14,7 @@ $"mkdir -p ./bin";
 if(status) {
 	$"rm ./bin/*";
 	$"rmdir ./bin";
-	#exit;
+	#exit 1;
 }
 
 status = status + ($cc + " ./bin/*.o " + cflags + " -o gbuild " + libs);
@@ -30,4 +30,4 @@ if(!status) {
 	}
 }
 
-#exit;
+#exit 0;

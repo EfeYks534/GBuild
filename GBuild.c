@@ -418,9 +418,11 @@ void PrsBuiltin()
 	lex = lexl;
 	LexStateDelete(lex->next);
 
-	if(AcceptIdent("exit"))
-		exit(0);
-	else if(AcceptIdentB("foreach")) {
+	if(AcceptIdentB("exit")) {
+		Expect(TK_INT);
+
+		exit(lexl->cur_int);
+	} else if(AcceptIdentB("foreach")) {
 		if(VariableGet("file") != NULL)
 			ErrorHandle(lex, "The variable 'file' is used by #foreach");
 		if(VariableGet("dir") != NULL)
@@ -435,7 +437,9 @@ void PrsBuiltin()
 
 		LexState *saved = lex;
 
+		ScopePush();
 		ExecuteForEach(ext, ".", saved);
+		ScopePop();
 
 		lex = saved;
 		SkipBody();
