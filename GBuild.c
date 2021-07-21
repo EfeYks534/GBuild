@@ -6,7 +6,7 @@
 #define _BSD_SOURCE
 #include <dirent.h>
 
-const char *reserved[] = {"let", "if", "else", "exit"};
+const char *reserved[] = {"let", "if", "else", "cut", "lengthof"};
 
 int IsReserved(const char *str)
 {
@@ -59,6 +59,72 @@ void PrsShell()
 	PushInt(ret);
 }
 
+void PrsLengthof()
+{
+	Expect(TK_LEFT_PHAR);
+
+	PrsExpression();
+
+	Value str = PopVal();
+
+	if(str.type != VT_STRING)
+		ErrorHandle(lex, "Can't get the length of a non-string value");
+
+	Expect(TK_RIGHT_PHAR);
+
+	PushInt(str.str_len);
+}
+
+void PrsCut()
+{
+	Expect(TK_LEFT_PHAR);
+
+	PrsExpression();
+
+	Value str = PopVal();
+
+	if(str.type != VT_STRING)
+		ErrorHandle(lex, "Can't cut a non-string value");
+
+	Expect(TK_COMMA);
+
+	PrsExpression();
+
+	Value tmp   = PopVal();
+	int64_t low = tmp.cur_int;
+
+	if(tmp.type != VT_INT)
+		ErrorHandle(lex, "Can't cut a string with non-integer lower bound");
+	if(low < 0)
+		ErrorHandle(lex, "Can't cut a string with negative lower bound");
+
+
+	Expect(TK_COMMA);
+
+	PrsExpression();
+
+	tmp = PopVal();
+	int64_t high = tmp.cur_int;
+
+	if(tmp.type != VT_INT)
+		ErrorHandle(lex, "Can't cut a string with non-integer upper bound");
+	if(high < 0)
+		ErrorHandle(lex, "Can't cut a string with negative upper bound");
+
+	Expect(TK_RIGHT_PHAR);
+
+	int64_t len = str.str_len - (low + high);
+
+	if(len <= 0)
+		ErrorHandle(lex, "Can't cut an entire string");
+
+	char *nstr = calloc(len + 1, 1);
+
+	memcpy(nstr, &str.cur_str[low], str.str_len - high - low);
+
+	PushString(nstr);
+}
+
 void PrsFactor()
 {
 	if(Accept(TK_DOLLAR)) {
@@ -84,14 +150,46 @@ void PrsFactor()
 	case TK_INT:
 		PushInt(lexl->cur_int);
 		break;
+	case TK_LOGICAL_NOT: {
+		PrsExpression();
+
+		Value val = PopVal();
+
+		if(val.type == VT_STRING)
+			ErrorHandle(lex, "Can't get the logical not of a string");
+
+		if(val.type == VT_INT)
+			PushInt(val.cur_int == 0);
+
+		if(val.type == VT_FLOAT)
+			PushInt(val.cur_float == 0);
+
+		break;
+	  }
 	case TK_IDENT: {
+		if(strcmp(lexl->cur_str, "cut") == 0) {
+			PrsCut();
+			break;
+		} else if(strcmp(lexl->cur_str, "lengthof") == 0) {
+			PrsLengthof();
+			break;
+		}
+
 		Variable *var = VariableGet(lexl->cur_str);
 		if(var == NULL) {
 			printf("GBuildFile:%d: error: Can't find variable '%s'\n", lex->line, lexl->cur_str);
 			exit(1);
 		}
 
+		LexState *saved = lex;
+
 		if(AcceptB(TK_EQUALS)) {
+			if(Accept(TK_EQUALS)) {
+				lex = saved;
+				PushVal(&var->value);
+				break;
+			}
+
 			PrsExpression();
 			var->value = PopVal();
 		}
@@ -142,13 +240,8 @@ void PrsTerm()
 				PushInt(v1.cur_int * v2.cur_int); 
 			}
 		} else {
-			if(v1.type == VT_STRING || v2.type == VT_STRING) {
-				if(!(v1.type == VT_STRING && v2.type == VT_STRING))
-					ErrorHandle(lex, "Can't compare string with a non-string value");
-
-				PushInt(strcmp(v1.cur_str, v2.cur_str) == 0);
-				continue;
-			}
+			if(v1.type == VT_STRING || v2.type == VT_STRING)
+				ErrorHandle(lex, "Can't divide strings");
 
 			if((v2.type == VT_INT ? v2.cur_int : v2.cur_float) == 0)
 				ErrorHandle(lex, "Can't divide number by 0");
@@ -159,7 +252,7 @@ void PrsTerm()
 	}
 }
 
-void PrsExpression()
+void PrsExpression0()
 {
 	PrsTerm();
 
@@ -202,26 +295,64 @@ void PrsExpression()
 				PushInt(v1.cur_int + v2.cur_int); 
 			}
 		} else {
-			if(v2.type == VT_STRING)
-				ErrorHandle(lex, "Can't subtract string from a value");
-
-			if(v1.type == VT_STRING) {
-				if(v2.type != VT_INT)
-					ErrorHandle(lex, "Can't subtract a non-integer value from a string");
-
-				if(v2.cur_int >= (int64_t) v1.str_len)
-					ErrorHandle(lex, "Can't destroy a string");
-
-				v1.cur_str[v1.str_len - v2.cur_int] = '\0';
-				v1.str_len -= v2.cur_int;
-
-				PushVal(&v1);
+			if(v1.type == VT_STRING || v2.type == VT_STRING) {
+				ErrorHandle(lex, "Can't subtract from strings");
 			} else if(v1.type == VT_FLOAT || v2.type == VT_FLOAT) {
-
 				PushFloat(ValueNum(&v1) - ValueNum(&v2));
-
 			} else if(v1.type == VT_INT && v2.type == VT_INT) {
 				PushInt(v1.cur_int - v2.cur_int); 
+			}
+		}
+	}
+}
+
+void PrsExpression()
+{
+	PrsExpression0();
+
+	while(Accept(TK_GREATER) || Accept(TK_LESSER) || Accept(TK_EQUALS)) {
+		int64_t tok = LexPush(lexp);
+		int aequ = 0;
+
+		if(tok == TK_EQUALS)
+			Expect(TK_EQUALS);
+
+		if(tok != TK_EQUALS) {
+			if(AcceptB(TK_EQUALS)) {
+				aequ = 1;
+			}
+		}
+
+		PrsExpression0();
+
+		Value v2 = PopVal();
+		Value v1 = PopVal();
+
+		if(tok == TK_GREATER || tok == TK_LESSER) {
+			if(v2.type == VT_STRING || v1.type == VT_STRING)
+				ErrorHandle(lex, "Can't compare strings with greater / lesser signs");
+
+			if(tok == TK_GREATER) {
+				if(aequ)
+					PushInt(ValueNum(&v1) >= ValueNum(&v2));
+				else
+					PushInt(ValueNum(&v1) > ValueNum(&v2));
+			} else {
+				if(aequ)
+					PushInt(ValueNum(&v1) <= ValueNum(&v2));
+				else
+					PushInt(ValueNum(&v1) < ValueNum(&v2));
+			}
+		} else if(tok == TK_EQUALS) {
+			if((v1.type == VT_STRING || v2.type == VT_STRING)) {
+				if(v1.type != VT_STRING || v2.type != VT_STRING)
+					ErrorHandle(lex, "Can't compare string with a non-string value");
+
+				size_t len = v1.str_len > v2.str_len ? v1.str_len : v2.str_len;
+
+				PushInt(strncmp(v1.cur_str, v2.cur_str, len) == 0);
+			} else {
+				PushInt(ValueNum(&v1) == ValueNum(&v2));
 			}
 		}
 	}

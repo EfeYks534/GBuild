@@ -8,7 +8,7 @@ $"mkdir -p ./bin";
 
 #foreach("c") {
 	status = status + ($cc + " -c " + file + " " + cflags +
-						" -o ./bin/" + (file - 1) + "o");
+						" -o ./bin/" + cut(file, 0, 1) + "o");
 }
 
 if(status) {
@@ -23,8 +23,8 @@ $"rm ./bin/*";
 $"rmdir ./bin";
 
 if(!status) {
-	if(!(argc - 2)) {
-		if(arg1 / "install") {
+	if(argc == 2) {
+		if(arg1 == "install") {
 			$"sudo cp ./gbuild /usr/bin/gbuild";
 		}
 	}
