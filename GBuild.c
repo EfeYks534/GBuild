@@ -550,9 +550,17 @@ void PrsBuiltin()
 	LexStateDelete(lex->next);
 
 	if(AcceptIdentB("exit")) {
-		Expect(TK_INT);
+		PrsExpression();
 
-		exit(lexl->cur_int);
+		Value val = PopVal();
+
+		if(val.type != VT_INT)
+			ErrorHandle(lex, "#exit expects integer value");
+
+		if(val.cur_int < 0)
+			val.cur_int = -val.cur_int;
+
+		exit(val.cur_int % 256);
 	} else if(AcceptIdentB("foreach")) {
 		if(VariableGet("file") != NULL)
 			ErrorHandle(lex, "The variable 'file' is used by #foreach");
@@ -607,10 +615,21 @@ void Parse()
 
 int main(int argc, char **argv)
 {
-	File *f = FileRead("GBuildFile");
+	const char *file_name = "GBuildFile";
+
+	if(argc > 1) {
+		const char *arg = argv[argc-1];
+
+		if(strlen(arg) > 2) {
+			if(memcmp(arg, "f:", 2) == 0)
+				file_name = &arg[2];
+		}
+	}
+
+	File *f = FileRead(file_name);
 
 	if(f->data == NULL || f->size == 0) {
-		printf("gbuild: fatal error: Can't read GBuildFile\n");
+		printf("gbuild: fatal error: Can't read %s\n", file_name);
 		return 1;
 	}
 
