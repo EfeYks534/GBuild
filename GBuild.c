@@ -5,8 +5,12 @@
 #include <string.h>
 #define _BSD_SOURCE
 #include <dirent.h>
+#include <time.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
-const char *reserved[] = {"let", "if", "else", "cut", "lengthof"};
+const char *reserved[] = {"let", "if", "else", "cut", "lengthof", "uptime", "newer"};
 
 int IsReserved(const char *str)
 {
@@ -73,6 +77,49 @@ void PrsLengthof()
 	Expect(TK_RIGHT_PHAR);
 
 	PushInt(str.str_len);
+}
+
+void PrsNewer()
+{
+	Expect(TK_LEFT_PHAR);
+
+	PrsExpression();
+
+	Value str = PopVal();
+
+	if(str.type != VT_STRING)
+		ErrorHandle(lex, "File name must be a string");
+
+	Expect(TK_COMMA);
+
+	PrsExpression();
+
+	Value str2 = PopVal();
+
+	if(str2.type != VT_STRING)
+		ErrorHandle(lex, "File name must be a string");
+
+	Expect(TK_RIGHT_PHAR);
+
+	struct stat s;
+
+	int r = stat(str.cur_str, &s);
+
+	if(r != 0) {
+		PushInt(0);
+		return;
+	}
+
+	struct stat s2;
+
+	r = stat(str2.cur_str, &s2);
+
+	if(r != 0) {
+		PushInt(1);
+		return;
+	}
+
+	PushInt(s.st_mtim.tv_sec > s2.st_mtim.tv_sec);
 }
 
 void PrsCut()
@@ -173,7 +220,21 @@ void PrsFactor()
 		} else if(strcmp(lexl->cur_str, "lengthof") == 0) {
 			PrsLengthof();
 			break;
-		}
+		} else if(strcmp(lexl->cur_str, "uptime") == 0) {
+			Expect(TK_LEFT_PHAR);
+			Expect(TK_RIGHT_PHAR);
+
+			struct timespec tp;
+
+			clock_gettime(CLOCK_MONOTONIC_RAW, &tp);
+
+			PushFloat((double) tp.tv_sec + ((double) tp.tv_nsec / 1000000000.0));
+			break;
+		} else if(strcmp(lexl->cur_str, "newer") == 0) {
+			PrsNewer();
+			break;
+		} 
+
 
 		Variable *var = VariableGet(lexl->cur_str);
 		if(var == NULL) {
