@@ -63,6 +63,68 @@ void PrsShell()
 	PushInt(ret);
 }
 
+void PrsHex()
+{
+	Expect(TK_LEFT_PHAR);
+
+	PrsExpression();
+
+	Value num = PopVal();
+
+	if(num.type != VT_INT)
+		ErrorHandle(lex, "Can't get the hex of a non-integer value");
+
+	Expect(TK_RIGHT_PHAR);
+
+	char *str = malloc(32);
+
+	size_t slen = 0;
+
+	int z = 0;
+
+	for(int i = 15; i >= 0; i--) {
+		int digit = (num.cur_int >> (i << 2)) & 0x0F;
+
+		if(digit == 0 && z == 0) continue;
+		z = 1;
+
+		str[slen++] = digit > 9 ? (digit - 10 + 'A') : (digit + '0');
+	}
+
+	str[slen] = 0;
+
+	PushString(str);
+}
+
+
+void PrsHashof()
+{
+	Expect(TK_LEFT_PHAR);
+
+	PrsExpression();
+
+	Value str = PopVal();
+
+	if(str.type != VT_STRING)
+		ErrorHandle(lex, "Can't get the hash of a non-string value");
+
+	Expect(TK_RIGHT_PHAR);
+
+	int64_t hash = 0;
+
+	for(size_t i = 0; i < str.str_len; i++) {
+		hash += str.cur_str[i];
+		hash  = hash << 5;
+		hash *= 12345;
+		hash ^= 0xE36CFA054FE2B427;
+	}
+
+	if(hash < 0)
+		hash = -hash;
+
+	PushInt(hash);
+}
+
 void PrsLengthof()
 {
 	Expect(TK_LEFT_PHAR);
@@ -233,7 +295,14 @@ void PrsFactor()
 		} else if(strcmp(lexl->cur_str, "newer") == 0) {
 			PrsNewer();
 			break;
+		} else if(strcmp(lexl->cur_str, "hashof") == 0) {
+			PrsHashof();
+			break;
+		} else if(strcmp(lexl->cur_str, "hexof") == 0) {
+			PrsHex();
+			break;
 		} 
+
 
 
 		Variable *var = VariableGet(lexl->cur_str);
