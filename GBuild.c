@@ -670,6 +670,62 @@ next:;
 	}
 }
 
+void ExecuteForEachLine(char *file, LexState *state)
+{
+	FILE *f = fopen(file, "r");
+	if(f == NULL) return;
+
+	StringBuilder *builder = StringBuilderNew();
+
+	char *buf  = malloc(256);
+	size_t len = 0;
+
+	while(!feof(f)) {
+		size_t bytes = fread(buf, 1, 256, f);
+
+		for(size_t i = 0; i < bytes; i++) {
+			if(buf[i] == '\n') {
+foreachline:;
+				char *line = StringBuild(builder);
+
+				Variable *var = VariableGet("line");
+
+				if(var == NULL) {
+					var = calloc(1, sizeof(Variable));
+					var->name          = "line";
+					var->value.type    = VT_STRING;
+					var->value.cur_str = line;
+					var->value.str_len = len;
+
+					VariableNew(var);
+				} else {
+					var->value.type    = VT_STRING;
+					var->value.cur_str = line;
+					var->value.str_len = len;
+				}
+
+
+				lex = LexStateNew();
+				memcpy(lex, state, sizeof(LexState));
+				PrsBody();
+
+				len = 0;
+				StringBuilderDelete(builder);
+				builder = StringBuilderNew();
+			} else {
+				StringBuilderAppend(builder, "%c", buf[i]);
+				len++;
+			}
+		}
+	}
+
+	if(len > 0)
+		goto foreachline;
+
+	free(buf);
+	StringBuilderDelete(builder);
+}
+
 void PrsBuiltin()
 {
 	Expect(TK_SQUARE);
@@ -708,6 +764,26 @@ void PrsBuiltin()
 
 		ScopePush();
 		ExecuteForEach(ext, ".", saved);
+		ScopePop();
+
+		lex = saved;
+		SkipBody();
+		return;
+	} else if(AcceptIdentB("foreach_line")) {
+		if(VariableGet("line") != NULL)
+			ErrorHandle(lex, "The variable 'line' is used by #foreach_line");
+
+		Expect(TK_LEFT_PHAR);
+		Expect(TK_STRING);
+
+		char *name = lexl->cur_str;
+
+		Expect(TK_RIGHT_PHAR);
+
+		LexState *saved = lex;
+
+		ScopePush();
+		ExecuteForEachLine(name, saved);
 		ScopePop();
 
 		lex = saved;
