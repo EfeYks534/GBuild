@@ -322,13 +322,41 @@ void PrsFactor()
 
 			PrsExpression();
 			var->value = PopVal();
+		} else if(AcceptB(TK_LEFT_BRACK)) {
+			if(var->value.type != VT_STRING)
+				ErrorHandle(lex, "Can't dereference non-string value");
+
+			PrsExpression();
+
+			Expect(TK_RIGHT_BRACK);
+
+			Value val = PopVal();
+
+			if(val.type != VT_INT)
+				ErrorHandle(lex, "String index is not an integer");
+
+			int64_t index = val.cur_int;
+
+			if(index < 0)
+				ErrorHandle(lex, "String index is smaller than 0");
+
+			if((size_t) index >= var->value.str_len)
+				ErrorHandle(lex, "String index is out of bounds");
+				
+
+			char *str = calloc(1, 2);
+			str[0] = var->value.cur_str[index];
+
+			PushString(str);
+			break;
 		}
 
 		PushVal(&var->value);
 		break;
 	  }
 	default:
-		ErrorHandle(lex, "Expected factor");
+		printf("GBuildFile:%d: error: Expected factor, got '%s'\n", lex->line, GetTokenName(token));
+		exit(1);
 	}
 }
 
@@ -440,14 +468,14 @@ void PrsExpression()
 {
 	PrsExpression0();
 
-	while(Accept(TK_GREATER) || Accept(TK_LESSER) || Accept(TK_EQUALS)) {
+	while(Accept(TK_GREATER) || Accept(TK_LESSER) || Accept(TK_EQUALS) || Accept(TK_LOGICAL_NOT)) {
 		int64_t tok = LexPush(lexp);
 		int aequ = 0;
 
-		if(tok == TK_EQUALS)
+		if(tok == TK_EQUALS || tok == TK_LOGICAL_NOT)
 			Expect(TK_EQUALS);
 
-		if(tok != TK_EQUALS) {
+		if(tok != TK_EQUALS && tok != TK_LOGICAL_NOT) {
 			if(AcceptB(TK_EQUALS)) {
 				aequ = 1;
 			}
@@ -483,6 +511,17 @@ void PrsExpression()
 				PushInt(strncmp(v1.cur_str, v2.cur_str, len) == 0);
 			} else {
 				PushInt(ValueNum(&v1) == ValueNum(&v2));
+			}
+		} else if(tok == TK_LOGICAL_NOT) {
+			if((v1.type == VT_STRING || v2.type == VT_STRING)) {
+				if(v1.type != VT_STRING || v2.type != VT_STRING)
+					ErrorHandle(lex, "Can't compare string with a non-string value");
+
+				size_t len = v1.str_len > v2.str_len ? v1.str_len : v2.str_len;
+
+				PushInt(strncmp(v1.cur_str, v2.cur_str, len) != 0);
+			} else {
+				PushInt(ValueNum(&v1) != ValueNum(&v2));
 			}
 		}
 	}
